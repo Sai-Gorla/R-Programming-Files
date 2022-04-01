@@ -1,0 +1,95 @@
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+
+### Question 1 — In your own words, provide a clear definition of the confidence interval and the prediction interval, and state their respective significance. . 
+
+```{r}
+#Confidence Interval(CI): The probability that a parameter will fall between two values around the mean is represented by a confidence interval and it measure the degree of uncertainty. 
+#They're most commonly built with 95 percent confidence levels.
+# F +/- 2SE
+
+#Prediction Interval: A prediction interval is a form of confidence interval (CI) used in regression analysis to forecast the value of a new observation based on existing model.
+```
+ 
+### Install the openintro R package and load the library in your R environment. Use the ncbirths dataset to answer the following questions
+
+```{r}
+library(openintro)
+summary(ncbirths)
+head(ncbirths)
+ncbirths<-na.omit(ncbirths)
+str(ncbirths)
+```
+Explanation: After removing NA values from ncbirths data set we have  800 rows and 13 columns of data.
+
+### Question 2 — Load the data, build a full correlation matrix and explain the chart. Do you detect any multicollinearity that would affect the construction of a multiple regression model? Are there any fields that may not be useful (or redundant) when building the model? If yes, provide an example. 
+
+```{r}
+pairs.panels(ncbirths[c("fage","mage","mature","weeks", "premie", "visits", "marital","gained","weight", "lowbirthweight", "gender", "habit","whitemom")])
+```
+
+EXPLANATION: The display shows various features fage, mage, mature, weeks and so on and diagonally it shows distribution of each variable in the histogram. 
+fage, visits, gained, weights are normally distributed, while mage is having binomial distribution.
+In the display above the histogram we have pair wise correlations: fage & mage has 0.78, 
+mature & mage has -0.64, 
+mature & fage has -0.50. meaning that they are strongly correlated and so on.
+fage and mage has 0.78 meaning its strongly correlated which mean we have colinearity in our model. we can find that with p value whose value is more than 0.05 and remove them from our model.
+The bottom part of the correlation matrix is pair wise scatter plots. If the oval shape in the plot is stretched it means that both of the variables are strongly correlated while the red dot inside the oval shape is the mean value.
+
+ 
+
+### Question 3 —Build a full multiple regression model that predicts the birth weight i.e weight. Display the model’s summary and comment on the: R-squared, Standard Error, F-Statistic, p-values of coefficients.   
+
+
+```{r}
+model <- lm(weight~fage+mage+mature+weeks+premie+visits+marital+gained+lowbirthweight+gender+habit+whitemom, data = ncbirths)
+summary(model)
+
+```
+
+Explanation: 
+
+R-squared: In multiple linear regression, the R-squared represents correlation between the observed values and the predicted values. The value of R always be positive ranging between 0 to 1. here we have R-squared value is 0.6049 meaning 60% of the variability in the predictor variable which is weight.while Adjusted R-squared value is 0.59, which means 59% of variance in the weight can be predicted by other variables.
+
+Standard Error: Residual standard error is the error of prediction. If the value of RSE is low, it implicates that the model is accurate.
+in the ncbirths data, we have RSE as 0.9126 and is used to find Confidence interval.
+
+F-statistics: It is the ratio of two variables and in our model the value is 100.4 and p value is less than 0.05 meaning the model is statistically significant.
+
+
+### QUESTION 4: Using the model from the previous question, perform stepwise elimination based on coefficients with the p-value > 0.05 to ensure that all coefficients are significant. Demonstrate each step as you eliminate the coefficients and indicate if the model is improving. 
+
+
+```{r}
+model<- lm(weight~fage+mature+weeks+premie+visits+marital+gained+lowbirthweight+gender+habit+whitemom, data = ncbirths)
+summary(model)
+model<- lm(weight~fage+weeks+premie+visits+marital+gained+lowbirthweight+gender+habit+whitemom, data = ncbirths)
+summary(model)
+model<- lm(weight~fage+weeks+premie+marital+gained+lowbirthweight+gender+habit+whitemom, data = ncbirths)
+summary(model)
+model<- lm(weight~fage+weeks+marital+gained+lowbirthweight+gender+habit+whitemom, data = ncbirths)
+summary(model)
+model<- lm(weight~fage+weeks+gained+lowbirthweight+gender+habit+whitemom, data = ncbirths)
+summary(model)
+```
+
+Explanation: Adjusted R-squared value is 0.5989 and R squared value is 0.6049 in the first model where we have coefficients of all variables. After performing step wise elimination based on coefficients, the R-squared and adjusted R squared values were improved to 60.3%, 60% respectively.
+
+### Question 5: Use the following data to predict the birth weight using the final model from question 4 above: fage = 40, mage = 32, mature = 'mature mom’, weeks = 42, premie = 'full term’, visits = 12, marital = ‘married', gained=22, lowbirthweight = 'not low’, gender = ‘female', habit = ‘nonsmoker', whitemom = ‘white’. After which, derive the 95% confidence and prediction intervals for the forecasted birth weight. Comment on the results.  Note: you can use a library to make your predictions. 
+
+```{r}
+new_data <- data.frame('fage' = 40, 'mage' = 32, 'mature' = "mature mom", 'weeks' = 42, 'premie' = "full term", 'visits' = 12, 'marital' = "married", 'gained'= 22, 'lowbirthweight' = "not low", 'gender' = "female", 'habit' = "nonsmoker",'whitemom' = "white")
+new_data
+
+predicted_Weight <- predict(model,new_data)
+predicted_Weight
+
+predict(model, new_data, interval = "confidence", level = 0.95)
+predict(model, new_data, interval = "prediction", level = 0.95)
+
+```
+
+Explanation: The predicted weight is 8.003 and the 95% confidence interval lies between 7.839 and 8.168 while prediction interval lies between 6.207 and 9.800324
