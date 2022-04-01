@@ -1,0 +1,110 @@
+##Create a table named Director_info in SQLite that matches the CSV.
+
+```{r}
+###  CREATE TABLE Director_info (
+ ## Director TEXT PRIMARY KEY,
+  ##Director_ID INTEGER NOT NULL
+   ## );
+```
+
+
+##Import(load) the entire data from the CSV into that table using the SQLite .import command.
+
+```{r}
+## .separator ','
+## .import /Users/kasiraothanikonda/Downloads/directors.csv Director_info
+## SELECT *
+   ## FROM
+   ## Director_info;
+```
+
+
+
+```{r}
+library(RSQLite)
+library(ggplot2)
+#Count the number of rows in the movie_info and director_info tables. 
+db <- dbConnect(SQLite(), 
+dbname = "/Users/kasiraothanikonda/Downloads/imdb.db")
+dbListTables(db)
+# movie_info records:
+query = "select * from movie_info"
+res = dbGetQuery(db,query) 
+res
+# movie_info records:
+dbGetQuery(db,"select * from Directors_info")
+```
+
+Explanation: movie_info data has 1000 rows and 8 columns of data.
+And director_info has 548 rows and 2 columns.
+
+```{r}
+## How many movies were released between 2010 and 2020 (inclusive)? Visualize the results. 
+query1 = "SELECT Release_Year,count(*) as count FROM movie_info 
+WHERE Release_Year between 2010 AND 2020 group by Release_Year"
+movieslist = dbGetQuery(db,query1)
+movieslist
+ggplot(movieslist, aes(x = Release_Year, y= count,
+ fill=Release_Year)) + geom_bar(stat = "identity")+ ggtitle("No.of Movies Released between 2010 and 2020")+ labs (x="Release Year", y= "Count") 
+
+```
+Explanation: Total of 215 movies got released between 2010 and 2020 inclusively. 
+In the year 2014 has highest number of movie releases while 2020 having lowest movie releases.
+
+```{r}
+## What is the minimum, average and maximum ratings for “Action” movies.  Ensure that you query the genre using wild cards. 
+query2 ="SELECT IMDB_Rating FROM movie_info WHERE Genre LIKE '%Action%'"
+actionMovie_ratings = dbGetQuery(db,query2)
+summary(actionMovie_ratings)
+
+```
+
+Explanation: Minimum, Maximum, Average IMDB_Ratings for action movies are 7.600, 9.000 and 7.949 respectively.
+
+```{r}
+## What are the 25 highest-grossing movies within the dataset? Display the title, genre and gross. 
+query3 = "SELECT Series_Title, Genre, Gross from movie_info where Gross != 'NA' order by Gross desc limit 25"
+highGross = dbGetQuery(db, query3)
+highGross
+
+```
+Explanation: Top 25 movies who got highest gross amounts and this is after removing NA values.
+
+```{r}
+## Which directors have the highest-grossing movies. Display the director name and the total gross. Ensure that you join the necessary tables. Visualize the results using a Bar chart.
+
+query4="select Director_Name, sum(gross) as total_gross from movie_info a join Directors_info b on a.Director_ID=b.Director_ID group by Director_Name order by sum(gross) desc limit 10"
+highestGross = dbGetQuery(db,query4)
+highestGross
+
+ggplot(highestGross, aes(x = total_gross, y=
+DIrector_Name, fill=total_gross)) + geom_bar(stat = "identity")+ ggtitle("Top 10 Directors with highest-Grossing")+ labs (x="Tot.Gross", y= "Name of Director") 
+```
+Explanation: Among all the top 10 directors with highest grossing movies, Steven Spielberg tops the list followed by Antony Russo.
+
+```{r}
+## Create a function called verifyDirector() that takes a director name as its argument, and queries the database to check if the director exists. Your function should display a message to notify the user if the director was found or not.
+
+verifyDirector<-function(DirectorName){
+  if(dim(dbGetQuery(db, 'SELECT Director_Name from Directors_info where Director_Name=?',
+             params = DirectorName))[1]==0){
+    print("Director not found")
+  }
+  else{
+    print("Director was found")
+  }
+}
+```
+
+```{r}
+verifyDirector("Anurag Kashyap")
+```
+
+### Question 3: What is the average runtime for the thriller movie genre. 
+
+```{r}
+query7 ="SELECT avg(RUntime) FROM movie_info WHERE Genre LIKE '%Thriller%'"
+thrillerMovie_ratings = dbGetQuery(db,query7)
+thrillerMovie_ratings
+```
+Explanation: Avg.Runtime for thriller movies is 119.6423 min.
