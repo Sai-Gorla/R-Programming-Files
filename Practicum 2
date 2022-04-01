@@ -1,0 +1,222 @@
+install.packages("mongolite")
+library(mongolite)
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+
+```{r}
+library(readr)
+flights_2019<-read.csv("C:/Users/user/Downloads/2019_ONTIME_REPORTING_FSW.csv")
+```
+
+```{r}
+#trips_collection$drop()
+trips_collection$insert(flights_2019)
+```
+
+```{r}
+
+trips_collection$count()
+```
+
+Explanation: 1897503 records were loaded in mongodb flights_2019 collection.
+
+
+Let’s explore patterns in the region. For each of the original 3 states (i.e. AZ, NV, CA), analyze the most popular outbound/destination airports. For example, if a flight originated in CA (at any of its airports), where do they often go? Comment on your findings and visualize the top results.
+
+```{r}
+ 
+Popular_Destination<- trips_collection$aggregate('[
+ {"$match" : {"ORIGIN_ST" : {"$in":["CA","AZ","NV"] }}},
+ { "$group" : { "_id" : {"origin":"$ORIGIN_ST","Dest":"$DEST"},
+                        "number_records" : { "$sum" : 1}
+                      }
+                  }]')
+
+Popular_Destination<-Popular_Destination%>%
+  group_by(Popular_Destination$`_id`)%>%
+  ungroup()
+Popular_Destination<-Popular_Destination[-1]
+
+Popular_Destination<-Popular_Destination%>%select(origin,Dest,number_records)%>%
+  group_by(origin,Dest)%>%
+  summarize(nflights = number_records)%>%
+  slice_max(order_by = nflights, n = 3)
+Popular_Destination
+ggplot(Popular_Destination, aes(factor(origin), nflights, fill = Dest)) + 
+  geom_bar(stat="identity", position = "dodge") + 
+  xlab("Origin State")+ylab("Number of flights")+ggtitle("Most popular Destinations")
+
+
+```
+
+Explanation: We have extracted the top 3 Destination Airports where the flights from the states (CA,AZ,NV) go. FLights that originate from Arizona go mostly to Denver followed by Los Angeles and Dallas. Flights from California go to Phoenix followed by Las vegas and San francisco. FLights from Nevada mostly go to Los Angeles, San Francisco and Denver.
+
+
+#Question 3
+a)a. Ensure that you indicate the full name of each carrier, in lieu of the carrier code. This will require web scraping. Here is a helpful resource with the list of airline codes and the respective names.
+
+```{r}
+library(xml2)
+library(rvest)
+web <- "https://en.wikipedia.org/wiki/List_of_airline_codes"
+web <- read_html(web)
+airline_codes <- html_nodes(web, "table")
+head(airline_codes)
+airline_codes <- web %>%
+  html_nodes("table") %>%
+  .[1] %>%
+  html_table(fill = T)
+airline_codes <- airline_codes[[1]]
+colnames(airline_codes)[1] <- "CARRIER_CODE"
+airline_codes<-airline_codes[-2]
+airline_codes<-airline_codes[-c(3:5)]
+airline_codes
+```
+We have scrapped the data and extracted airline names as per their carrier code.
+
+#Question 3
+b)Visualize the top 10 results and show the carrier name and the frequency. Explain the results. 
+
+```{r}
+#Top 10 Carriers with the highest frequency
+top10_carriers<- trips_collection$aggregate('[
+{ "$group" : { "_id" : {"CARRIER_CODE":"$CARRIER_CODE"},
+"count" : { "$sum" : 1}}},
+{"$sort" : {"count" : -1}},
+{ "$limit" : 10 }]')
+
+top10_carriers<-top10_carriers%>%
+  group_by(`_id`,count)%>%
+  summarise(CARRIER_CODE=as.character(`_id`))%>%
+  arrange(desc(count))%>%
+  ungroup
+
+top10_carriers <- dplyr::left_join(top10_carriers, airline_codes, by=c("CARRIER_CODE" = "CARRIER_CODE"))
+top10_carriers<-top10_carriers[-1]
+top10_carriers
+
+top10_carriers%>%
+  ggplot(aes(x=reorder(Airline,-count), y=count,label = count))+
+  geom_bar(stat="identity")+ 
+  theme(axis.text.x=element_text(color = "black", size=08, angle=45, vjust=.8, hjust=0.8))+ 
+  labs(title = "Top 10 Airlines with highest frequency") +
+  ylab("Frequency")+
+  xlab("Airlines")+
+  scale_y_continuous(labels = scales::label_number_si())+
+  geom_text(size = 3, position = position_stack(vjust = 0.5))
+```
+Explanation: From the plot it is clear that Southwest Airlines has the highest frequency which is 556915 followed by American Airlines which is 286235. Skywest Airlines is not far behind with frequency of 239463.
+
+#Question 5
+Select any (1) aircraft, and explore the data to determine where it often travels. Calculate its average arrival and departure delays at the airports. After which analyze all the results to identify any patterns that are evident and also indicate which airline operates that aircraft. Explain your findings and visualize the Note: the TAIL_NUM can help you to identify each unique aircraft.
+
+```{r}
+#Lets explore the most popular route for aircraft "N130AN".
+Popular_Route<- trips_collection$aggregate('[
+ {"$match" : {"TAIL_NUM" : "N130AN"}},
+ { "$group" : { "_id" : {"Origin_State":"$ORIGIN_ST","Origin":"$ORIGIN","Dest":"$DEST","Carrier":"$CARRIER_CODE"},
+                        "number_records" : { "$sum" : 1}}},
+                        {"$sort" : {"number_records" : -1}},
+                                                  { "$limit" : 4 }]')
+                                                  
+                                                  
+
+Popular_Route<-Popular_Route%>%
+  group_by(Popular_Route$`_id`)%>%
+  ungroup()
+Popular_Route<-Popular_Route[-1]
+Popular_Route
+```
+Explanation: For Aircraft N130AN, the most popular route is between HNL and LAX where it travels around 100 times which is followed by LAX and ORD.
+
+Now to calculate the average arrival delay and departure delay between the airports and finding the airports with the most delays for aircraft "N130AN".
+Departure Delays will be at the origin and Arrival Delays at Destination. Finding the delays along with the number of flights at that airport will give us better understanding.
+
+```{r}
+#AVergae Departure Delays
+Average_Departure_Delays<- trips_collection$aggregate('[
+ {"$match" : {"TAIL_NUM" : "N130AN"}},
+ { "$group" : { "_id" : {"Origin":"$ORIGIN"},
+                        "Avg_Departure_Delay" :{"$avg":"$DEP_DELAY"},
+                        "number_of_flights" : { "$sum" : 1}}},
+                        {"$sort" : {"Avg_Departure_Delay" : -1}},
+                                          { "$limit" :10 }        ]')
+Average_Departure_Delays<-Average_Departure_Delays%>%
+  group_by(Average_Departure_Delays$`_id`)%>%
+  ungroup()
+Average_Departure_Delays<-Average_Departure_Delays[-1]
+Average_Departure_Delays
+Average_Departure_Delays%>%
+  ggplot(aes(x=reorder(Origin,-Avg_Departure_Delay), y=Avg_Departure_Delay))+
+  geom_bar(stat="identity")+ 
+  theme(axis.text.x=element_text(color = "black", size=08, angle=45, vjust=.8, hjust=0.8))+ 
+  labs(title = "Avergae Departure Delays at the Airport for Aircraft N130AN") +
+  ylab("Avg Departure Delay (mins)")+
+  xlab("Origin Airport")
+```
+
+```{r}
+#Average Arrival Delays
+Average_Arrival_Delays<- trips_collection$aggregate('[
+ {"$match" : {"TAIL_NUM" : "N130AN"}},
+ { "$group" : { "_id" : {"DEST":"$DEST"},
+                        "Avg_Arrival_Delay" :{"$avg":"$ARR_DELAY"},
+                        "number_of_flights" : { "$sum" : 1}}},
+                        {"$sort" : {"Avg_Arrival_Delay" : -1}},
+                                           { "$limit" :10 }       ]')
+Average_Arrival_Delays<-Average_Arrival_Delays%>%
+  group_by(Average_Arrival_Delays$`_id`)%>%
+  ungroup()
+Average_Arrival_Delays<-Average_Arrival_Delays[-1]
+Average_Arrival_Delays
+Average_Arrival_Delays%>%
+  ggplot(aes(x=reorder(DEST,-Avg_Arrival_Delay), y=Avg_Arrival_Delay))+
+  geom_bar(stat="identity")+ 
+  theme(axis.text.x=element_text(color = "black", size=08, angle=45, vjust=.8, hjust=0.8))+ 
+  labs(title = "Avergae Arrival Delays at the Airport for Aircraft N130AN") +
+  ylab("Avg Arrival Delay(mins)")+
+  xlab("Destination Airport")
+```
+It is evident from the analysis that the average delays for arrival is higher at the airport SMF whereas for departure, the delay is higher at the airport DCA. There is a huge gap between the next highest delays at arrival and departure which suggest that there might be an outlier for the delays at airport at SMF and DCA. NUmber of flights at SMF is 2 whereas at DCA its 3 which might be the reason for the huge avergae delays at both this airports.
+
+```{r}
+#Carrier that operates this aircraft
+
+flights_2019%>%
+  select(TAIL_NUM,CARRIER_CODE)%>%
+  filter(TAIL_NUM=="N130AN")%>%
+  unique()
+```
+American Airlines operate the aircraft N130AN.
+
+#Question 6
+Build one additional query to test a hypothesis or answer a question that you have about the dataset. Your query should retrieve data from MongoDB and evaluate the pattern/trend. Prepare supporting visualizations for your analysis. If necessary, you can integrate any additional data that provide more
+details or support your analysis/findings.
+
+```{r}
+#Let's calculate the total distance travelled by each aircraft and their respective carrier.
+
+Total_Distance<- trips_collection$aggregate('[
+ {"$match" : {"TAIL_NUM" :{"$ne":""}}},
+ { "$group" : { "_id" : {"Flight_Number":"$TAIL_NUM","Carrier":"$CARRIER_CODE"},
+                        "Distance" :{"$sum":"$DISTANCE"}}},
+                        {"$sort" : {"Distance" : -1}},
+                                                  { "$limit" :10 }]')
+
+Total_Distance<-Total_Distance%>%
+  group_by(Total_Distance$`_id`)%>%
+  ungroup()
+Total_Distance<-Total_Distance[-1]
+Total_Distance
+```
+It is clear that Carrier B6 and AA have travelled the highest distance in the year 2019. Aircraft N984JB, N978JB and N923JB of carrier B6 have the highest distance travelled.
+```{r}
+ggplot(Total_Distance, aes(factor(Carrier), Distance, fill = Flight_Number)) + 
+  geom_bar(stat="identity", position = "dodge") + 
+  xlab("Carrier")+
+  ylab("Total Distance")+ggtitle("Highest Total Distance travelled by aircrafts and their Carrier")+
+  scale_y_continuous(labels = scales::label_number_si())
+
+```
